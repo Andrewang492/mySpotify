@@ -1,10 +1,16 @@
 import spotipy
 import random
+from waitTimeManager import waitTimeManager
 
 class Shuffler:
     # Spotify sp
     sp = None
-    mix:dict = None # dict
+    mix:dict = None
+            #  mix[key] = {
+            #     "name": name,
+            #     'artist': artist,
+            #     "duration_ms" : duration_ms,
+            # }
     n = 0
     def __init__(self, sp) -> None:
         self.sp = sp
@@ -12,50 +18,22 @@ class Shuffler:
     def shuffle(self, approx_duration_ms:int=60000) -> list[str]:
         # get playlist to work with
         try:
-            playlistUri = self.getNowPlayingMixUri()
+            playlistUri = self.__getNowPlayingMixUri()
         except:
             print("no mix playing")
             return []
-        items = self.getMixItems(playlistUri)
-        self.initialiseMix(items)
-        print(self.n, self.mix)
+        self.__initialiseMix(playlistUri)
 
         # select songs:
-        r = self.calculateNewList(approx_duration_ms)
-        uris = r['uris']
+        r = self.__calculateNewList(approx_duration_ms)
+        uris = r['uris']        
+        self.__beginPlaying(uris)
         songNames = r['names']
-
-        playbackState = self.sp.current_playback()
-        if not('pausing' in playbackState['actions']['disallows']) and playbackState['is_playing']:
-            self.sp.pause_playback()
-        self.sp.repeat("off")
-        self.sp.shuffle("false")
-        self.sp.start_playback(uris = uris)
         return songNames
-    
-    def calculateNewList(self, approx_duration_ms) -> dict:
-        total_duration = 0
-        uris = []
-        songNames = []
-        while total_duration < approx_duration_ms:
-            randSongUri = list(self.mix.keys())[random.randrange(0, self.n)]
-            uris.append(randSongUri)
-            total_duration += self.mix[randSongUri]['duration_ms']
-            songNames.append(self.mix[randSongUri]['name'])
-        return {'uris': uris, 'names' : songNames}
 
-    def getNowPlayingMixUri(self):
-        current = self.sp.currently_playing()
-        if current['context']:
-            return current['context']['uri']
-        raise "not playing album or playlist"
-
-    def getMixItems(self, mixUri:str):
+    def __initialiseMix(self, mixUri) -> None:
         playlist = self.sp.playlist(playlist_id = mixUri)
-        return playlist['tracks']['items']
-        
-
-    def initialiseMix(self, items) -> None:
+        items = playlist['tracks']['items']
         mix = {}
         for item in items:
             track = item['track']
@@ -74,6 +52,85 @@ class Shuffler:
         self.mix = mix
 
         return
+
+    def __beginPlaying(self, uris:list):
+        playbackState = self.sp.current_playback()
+        if not('pausing' in playbackState['actions']['disallows']) and playbackState['is_playing']:
+            self.sp.pause_playback()
+        self.sp.repeat("off")
+        self.sp.shuffle(False)
+        self.sp.start_playback(uris = uris)
+
+    # Select shuffle type by changing name of shuffle function:
+    def __calculateNewList(self, approx_duration_ms) -> dict:
+        return self.__waitingShuffle(approx_duration_ms)
+
+    # Each track always has equal chance of playing
+    def __uniformShuffle(self, approx_duration_ms, maxSongs = 100) -> dict:
+        total_duration = 0
+        queue = []
+        songNames = []
+        i = 0
+        while total_duration < approx_duration_ms and i < maxSongs:
+            randSongUri = list(self.mix.keys())[random.randrange(0, self.n)]
+            queue.append(randSongUri)
+            total_duration += self.mix[randSongUri]['duration_ms']
+            songNames.append(self.mix[randSongUri]['name'])
+            i += 1
+        return {'uris': queue, 'names' : songNames}
+
+    # Inserts single copies until they've all played. Repeat.
+    def __cyclicShuffle(self, approx_duration_ms, maxSongs = 100) -> dict:
+        total_duration = 0
+        i = 0
+        uris = list(self.mix.keys())
+        queue = []
+        songNames = []
+        
+        while total_duration < approx_duration_ms and i < maxSongs:
+            if len(uris) == 0:
+                uris = list(self.mix.keys())
+            randSongUri = uris.pop(random.randrange(0, len(uris)))
+
+            queue.append(randSongUri)
+            songNames.append(self.mix[randSongUri]['name'])
+            i += 1
+            total_duration += self.mix[randSongUri]['duration_ms']
+
+        return {'uris': queue, 'names' : songNames}
+
+    # 
+    def __waitingShuffle(self, approx_duration_ms, maxSongs = 100) -> dict:
+        total_duration = 0
+        queue = [] #of uris
+        songNames = []
+        i = 0
+        #initialise PDF:
+        waitManager = waitTimeManager(self.mix)
+
+        while total_duration < approx_duration_ms and i < maxSongs:
+            # create cumulative distribbution: [(,), (,)...]
+            # random number used to binary search for key. (ascending)
+            randSongUri = waitManager.getRandomSong()
+
+            trackDuration = self.mix[randSongUri]['duration_ms']
+            waitManager.increaseWaitTimes(trackDuration, randSongUri)
+            queue.append(randSongUri)
+            total_duration += trackDuration
+            songNames.append(self.mix[randSongUri]['name'])
+            i += 1
+        return {'uris': queue, 'names' : songNames}
+
+    
+    
+    def __getNowPlayingMixUri(self):
+        current = self.sp.currently_playing()
+        if current['context']:
+            return current['context']['uri']
+        raise "not playing album or playlist"
+        
+        
+
 
     @DeprecationWarning
     def getTrackUrisOfMix(self, items:list) -> list[str]: 
