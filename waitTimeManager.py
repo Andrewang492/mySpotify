@@ -19,7 +19,7 @@ class waitTimeManager:
                 pair[1] += increase_ms
             else:
                 pair[1] = 0
-        print("PDF: ", self.pdf, "\n")
+        #print("PDF: ", self.pdf, "\n")
         self.__updateWaitTimeCDF()
 
     # update after pdf changes.
@@ -31,12 +31,11 @@ class waitTimeManager:
             cdf.append([pair[0], quantile])
         self.cdf = cdf
         self.totalWait = quantile
-        print("CDF: ", cdf, "\n")
+        #print("CDF: ", cdf, "\n")
         return
     
     def getRandomSong(self):
         x = random.randrange(0, self.totalWait)
-        print(x)
         valuesList = [pair[1] for pair in self.cdf]
         ind = self.__indexOfSmallestOver(x, valuesList)
         return self.cdf[ind][0]

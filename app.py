@@ -30,9 +30,9 @@ def redirectPage():
     sp_oauth = create_spotify_oauth() #create a new one...
     session.clear() # in this redirected state, clear everything else????
     code = request.args.get('code')
-    token_info = sp_oauth.get_access_token(code) #tokeninfo has refresh token, access token, expiresAt.
+    token_info = sp_oauth.get_access_token(as_dict = True, code = code) #tokeninfo has refresh token, access token, expiresAt.
     session["token_info"] = token_info #save this token information in this session.
-    return redirect(url_for('home', _external = True))
+    return redirect(url_for('shuffle')) #then send back to front end.
 
 @app.route('/shuffle')
 def shuffle():
@@ -64,7 +64,7 @@ def get_token():
         print("can't find token")
         raise "exception"
     now = int(time.time())
-    is_expired = token_info['expires_at'] = now < 60
+    is_expired = token_info['expires_at'] - now < 60
     if (is_expired):
         sp_oauth = create_spotify_oauth()
         token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
@@ -81,7 +81,8 @@ def create_spotify_oauth():
     return SpotifyOAuth(
         client_id = clientID,
         client_secret = clientSecret,
-        redirect_uri = url_for('redirectPage', _external = True),
+        #redirect_uri = url_for('redirectPage', _external = True),
+        redirect_uri = 'http://127.0.0.1:8080/redirect',
         scope = SCOPE
     )
 
